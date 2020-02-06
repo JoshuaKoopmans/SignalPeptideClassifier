@@ -14,8 +14,19 @@ class Signal_proteins():
         self.has_signal = has_signal
         
         
+    def __str__(self):
+        return "{}\n{}\n{}\nHas signal peptide: {}".format(self.header, self.protein, self.meta, self.has_signal) 
+        
+        
     @classmethod
     def from_raw(cls, header, protein, meta):
+        signal = header.split("|")[2]
+        
+        if signal == "NO_SP":
+            has_signal = False
+        else:
+            has_signal = True
+               
         return cls(header, protein, meta, has_signal)
         
     
