@@ -9,8 +9,7 @@ import domain.Signal_class as SigClass
 
 def main():
     """
-
-    :return:
+    Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
     proteins = open_and_read_file()
     parse_proteins(proteins)
