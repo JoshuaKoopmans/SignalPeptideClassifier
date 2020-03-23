@@ -4,6 +4,7 @@
 # Date: 13-02-2020                           #
 # Last Edited: 12-03-2020                    #
 ##############################################
+from matplotlib.colors import ListedColormap
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report
 import domain.Signal_class as SigClass
 from sklearn.preprocessing import OneHotEncoder
@@ -17,7 +18,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 
-def main(one_hot=False, nlf=True):
+def main(one_hot=True, nlf=False):
     """
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
@@ -33,18 +34,18 @@ def main(one_hot=False, nlf=True):
     dset = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
-        dset[idx] = nlf_encode(obj.get_protein())
+        dset[idx] = hotter(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
-        dset[idx] = nlf_encode(obj.get_protein())
+        dset[idx] = hotter(obj.get_protein())
         labels[idx] = 1
         idx += 1
 
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8)
 
-    logistic(X_train, X_test, y_train, y_test)
-    random_forest(X_train, X_test, y_train, y_test)
+    #logistic(X_train, X_test, y_train, y_test)
+    #random_forest(X_train, X_test, y_train, y_test)
     svms(X_train, X_test, y_train, y_test)
 
 def random_forest(X_train, X_test, y_train, y_test):
@@ -81,6 +82,8 @@ def svms(X_train, X_test, y_train, y_test):
     print('\nScore ', score)
     print('\nResult Overview\n', metrics.classification_report(y_test, predicted))
     print('\nConfusion matrix:\n', metrics.confusion_matrix(y_test, predicted))
+
+    plot_svm(X_train, X_test, svc, y_train, y_test, score)
 
 
 def logistic(X_train, X_test, y_train, y_test):
@@ -203,6 +206,39 @@ def plot_roc_cur(fper, tper):
     plt.legend()
     plt.show()
 
+def plot_svm(train, test, svc, class_train, class_test, score):
+    cmap, cmapMax = plt.cm.RdYlBu, ListedColormap(['#FF0000', '#0000FF'])
+
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+
+    h = 0.3
+    x_min, x_max = train[:, 0].min() - .3, train[:, 0].max() + .3
+    y_min, y_max = train[:, 1].min() - .3, train[:, 1].max() + .3
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
+
+    '''
+    if hasattr(svc, "decision_function"):
+        Z = svc.decision_function(np.c_[xx.ravel(), yy.ravel()])
+    else:
+        Z = svc.predict_proba(np.c_[xx.ravel(), yy.ravel()])[:, 1]
+
+    Z = Z.reshape(xx.shape)
+    ax.contourf(xx, yy, Z, cmap=cmap, alpha=0.7)
+    '''
+
+    # Plot also the training points
+    ax.scatter(train[:, 0], train[:, 1], c=class_train, cmap=cmapMax)
+    # and testing points
+    ax.scatter(test[:, 0], test[:, 1], c=class_test, cmap=cmapMax, alpha=0.5)
+
+    ax.set_xlim(xx.min(), xx.max())
+    ax.set_ylim(yy.min(), yy.max())
+    ax.set_xticks(())
+    ax.set_yticks(())
+    plt.title(str(score))
+
+    plt.show()
 
 main()
 
