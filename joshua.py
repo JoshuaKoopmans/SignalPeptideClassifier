@@ -1,24 +1,28 @@
 ##############################################
-# Authors: Joshua                            #
+# Authors: Joshua, Michelle                  #
 # Description: Signal Peptide dataset parser #
 # Date: 13-02-2020                           #
-# Last Edited: 12-03-2020                    #
+# Last Edited: 23-03-2020                    #
 ##############################################
-from matplotlib.colors import ListedColormap
-from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report, roc_curve, \
+    roc_auc_score
 import domain.Signal_class as SigClass
-from sklearn.preprocessing import OneHotEncoder
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn import svm, metrics, linear_model
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
+import epitopepredict as ep
+
+RANDOM_SEED = 314
+blosum = ep.blosum62
 
 
-def main(one_hot=True, nlf=False):
+def main(one_hot=True, nlf=False, blosum=False):
     """
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
@@ -29,37 +33,50 @@ def main(one_hot=True, nlf=False):
     labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
     if one_hot:
         n = 21
+        encoder = "One-Hot"
     elif nlf:
         n = 18
+        encoder = "NLF"
+    elif blosum:
+        n = 24
+        encoder = "BLOSUM62"
+
     dset = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
         if one_hot:
-            dset[idx] = hotter(obj.get_protein())
+            dset[idx] = one_hot_encode(obj.get_protein())
         elif nlf:
             dset[idx] = nlf_encode(obj.get_protein())
+        elif blosum:
+            dset[idx] = blosum_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
         if one_hot:
-            dset[idx] = hotter(obj.get_protein())
+            dset[idx] = one_hot_encode(obj.get_protein())
         elif nlf:
             dset[idx] = nlf_encode(obj.get_protein())
+        elif blosum:
+            dset[idx] = blosum_encode(obj.get_protein())
         labels[idx] = 1
         idx += 1
 
-    X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8)
+    X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
 
     logistic(X_train, X_test, y_train, y_test)
     random_forest(X_train, X_test, y_train, y_test)
     svms(X_train, X_test, y_train, y_test)
+    combo(X_train, X_test, y_train, y_test, encoder)
+
 
 def random_forest(X_train, X_test, y_train, y_test):
     sc = StandardScaler()
     X_train = sc.fit_transform(X_train)
     X_test = sc.transform(X_test)
 
-    regr = RandomForestRegressor(n_estimators=100, random_state=0, min_samples_split=5, min_samples_leaf=4, max_features="auto", max_depth=30)
+    regr = RandomForestRegressor(n_estimators=100, random_state=0, min_samples_split=5, min_samples_leaf=4,
+                                 max_features="auto", max_depth=30)
 
     print('=' * 5 + ' Random Forest ' + '=' * 5)
     print(regr.get_params())
@@ -76,6 +93,7 @@ def random_forest(X_train, X_test, y_train, y_test):
     print(classification_report(y_test, y_pred.round()))
     print('Accuracy Score :', accuracy_score(y_test, y_pred.round()))
 
+
 def svms(X_train, X_test, y_train, y_test):
     svc = svm.SVC(kernel='linear')
     print('=' * 5 + ' SVM ' + '=' * 5)
@@ -84,12 +102,9 @@ def svms(X_train, X_test, y_train, y_test):
     predicted = svc.predict(X_test)
     score = svc.score(X_test, y_test)
 
-
     print('\nScore ', score)
     print('\nResult Overview\n', metrics.classification_report(y_test, predicted))
     print('\nConfusion matrix:\n', metrics.confusion_matrix(y_test, predicted))
-
-    plot_svm(X_train, X_test, svc, y_train, y_test, score)
 
 
 def logistic(X_train, X_test, y_train, y_test):
@@ -97,7 +112,7 @@ def logistic(X_train, X_test, y_train, y_test):
 
     regr = linear_model.LogisticRegression(max_iter=1000000, class_weight="balanced")
     # class_weight={1: np.array(1000000), 0: 1.0}
-    print("="*5 + " Logistic " + "="*5)
+    print("=" * 5 + " Logistic " + "=" * 5)
 
     # Train the model using the training sets                                                                                                                                
     regr.fit(X_train, y_train)
@@ -118,6 +133,65 @@ def logistic(X_train, X_test, y_train, y_test):
     print(set(list(y_pred.round())))
 
     print('Accuracy Score :', accuracy_score(y_test, y_pred.round()))
+
+
+def combo(X_train, X_test, y_train, y_test, encoder):
+    """
+    Models (or classifiers) are put into a list and one by one are fitting and predicting using the train and test sets.
+    The False Positive Rate (FPR), False Negative  Rate (FNR) and Area Under the Curve (AUC) are computed
+    and collected into a dataframe. Using this dataframe, subplots are created for each classifier type.
+    The images are saved.
+
+    :param X_train: peptide sequences in train set
+    :param X_test: peptide sequences in test set
+    :param y_train: actual class of the peptide sequences in train set
+    :param y_test: actual class of the peptide sequences in test set
+    :param encoder: name of the encoder used
+    :return: images of the ROC-curve plots are saved
+    """
+    classifiers = [LogisticRegression(max_iter=1000000, class_weight="balanced", random_state=RANDOM_SEED),
+                   svm.SVC(kernel='linear', probability=True, random_state=RANDOM_SEED),
+                   RandomForestClassifier(n_estimators=400, random_state=RANDOM_SEED, min_samples_split=8,
+                                          min_samples_leaf=7, max_features="auto", max_depth=50)]
+
+    # Define a result table as a DataFrame
+    result_table = pd.DataFrame(columns=['classifiers', 'fpr', 'tpr', 'auc'])
+
+    # Train the models and record the results
+    for cls in classifiers:
+        model = cls.fit(X_train, y_train)
+        yproba = model.predict_proba(X_test)[::, 1]
+
+        fpr, tpr, _ = roc_curve(y_test, yproba)
+        auc = roc_auc_score(y_test, yproba)
+
+        result_table = result_table.append({'classifiers': cls.__class__.__name__,
+                                            'fpr': fpr,
+                                            'tpr': tpr,
+                                            'auc': auc}, ignore_index=True)
+
+    # Set name of the classifiers as index labels
+    result_table.set_index('classifiers', inplace=True)
+
+    fig = plt.figure(figsize=(8, 6))
+
+    for i in result_table.index:
+        plt.plot(result_table.loc[i]['fpr'],
+                 result_table.loc[i]['tpr'],
+                 label="{}, AUC={:.3f}".format(i, result_table.loc[i]['auc']))
+
+    plt.plot([0, 1], [0, 1], color='orange', linestyle='--')
+
+    plt.xticks(np.arange(0.0, 1.1, step=0.1))
+    plt.xlabel("False Positive Rate", fontsize=15)
+
+    plt.yticks(np.arange(0.0, 1.1, step=0.1))
+    plt.ylabel("True Positive Rate", fontsize=15)
+
+    plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
+    plt.legend(prop={'size': 13}, loc='lower right')
+
+    fig.savefig('multiple_roc_curve_' + encoder + '.png')
 
 
 def open_and_read_file():
@@ -161,7 +235,14 @@ def parse_proteins(entries):
 
 # All sequences should have the same length. (70)
 
-def hotter(seq="M" * 7):
+def one_hot_encode(seq):
+    """
+       Encoder that puts a "1" if an amino acid is at a position in a matrix where it matches a member of the other
+       dimension. This solely creates a machine-readable input for the classifier.
+
+       :param seq: peptide sequence
+       :return: vector for each amino acid, matrix for the entire sequence
+       """
     codes = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L',
              'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y', '*']
     matrix = np.zeros([21, len(seq)])
@@ -170,83 +251,37 @@ def hotter(seq="M" * 7):
     return matrix.reshape(21 * len(seq))
 
 
-#read the matrix a csv file on github
-nlf = pd.read_csv('resources/NLF.csv',
-                  index_col=0)
-
 def nlf_encode(seq):
+    """
+       Encoder based on the NLF, which takes physiochemical properties of amino acids into account.
+
+       :param seq: peptide sequence
+       :return: vector for each amino acid, matrix for the entire sequence
+       """
     x = pd.DataFrame([nlf[i] for i in seq]).reset_index(drop=True)
     e = x.values.flatten()
     return e
 
 
-def random_grid_rf_parameters():
-    # Number of trees in random forest
-    n_estimators = [int(x) for x in np.linspace(start=200, stop=2000, num=10)]
-    # Number of features to consider at every split
-    max_features = ['auto', 'sqrt']
-    # Maximum number of levels in tree
-    max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
-    max_depth.append(None)
-    # Minimum number of samples required to split a node
-    min_samples_split = [2, 5, 10]
-    # Minimum number of samples required at each leaf node
-    min_samples_leaf = [1, 2, 4]
-    # Method of selecting samples for training each tree
-    bootstrap = [True, False]
-    # Create the random grid
-    random_grid = {'n_estimators': n_estimators,
-                   'max_features': max_features,
-                   'max_depth': max_depth,
-                   'min_samples_split': min_samples_split,
-                   'min_samples_leaf': min_samples_leaf,
-                   'bootstrap': bootstrap}
-    return random_grid
+def blosum_encode(seq):
+    """
+    Encoder based on the BLOSUM62 substitution matrix giving an indication of the conserved parts of a sequence.
 
-def plot_roc_cur(fper, tper):
-    plt.plot(fper, tper, color='orange', label='ROC')
-    plt.plot([0, 1], [0, 1], color='darkblue', linestyle='--')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('Receiver Operating Characteristic (ROC) Curve')
-    plt.legend()
-    plt.show()
-
-def plot_svm(train, test, svc, class_train, class_test, score):
-    cmap, cmapMax = plt.cm.RdYlBu, ListedColormap(['#FF0000', '#0000FF'])
-
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
-
-    h = 0.3
-    x_min, x_max = train[:, 0].min() - .3, train[:, 0].max() + .3
-    y_min, y_max = train[:, 1].min() - .3, train[:, 1].max() + .3
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
-
-    '''
-    if hasattr(svc, "decision_function"):
-        Z = svc.decision_function(np.c_[xx.ravel(), yy.ravel()])
-    else:
-        Z = svc.predict_proba(np.c_[xx.ravel(), yy.ravel()])[:, 1]
-
-    Z = Z.reshape(xx.shape)
-    ax.contourf(xx, yy, Z, cmap=cmap, alpha=0.7)
-    '''
-
-    # Plot also the training points
-    ax.scatter(train[:, 0], train[:, 1], c=class_train, cmap=cmapMax)
-    # and testing points
-    ax.scatter(test[:, 0], test[:, 1], c=class_test, cmap=cmapMax, alpha=0.5)
-
-    ax.set_xlim(xx.min(), xx.max())
-    ax.set_ylim(yy.min(), yy.max())
-    ax.set_xticks(())
-    ax.set_yticks(())
-    plt.title(str(score))
-
-    plt.show()
-
-main()
+    :param seq: peptide sequence
+    :return: vector for each amino acid, matrix for the entire sequence
+    """
+    s = list(seq)
+    x = pd.DataFrame([blosum[i] for i in seq]).reset_index(drop=True)
+    e = x.values.flatten()
+    return e
 
 
+# Read the NLF matrix (.csv) for the NLF encoder
+nlf = pd.read_csv('resources/NLF.csv', index_col=0)
 
+# Run script with One-Hot encoder
+main(True, False, False)
+# Run script with NLF encoder
+main(False, True, False)
+# Run script with BLOSUM62 encoder
+main(False, False, True)
