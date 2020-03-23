@@ -34,18 +34,24 @@ def main(one_hot=True, nlf=False):
     dset = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
-        dset[idx] = hotter(obj.get_protein())
+        if one_hot:
+            dset[idx] = hotter(obj.get_protein())
+        elif nlf:
+            dset[idx] = nlf_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
-        dset[idx] = hotter(obj.get_protein())
+        if one_hot:
+            dset[idx] = hotter(obj.get_protein())
+        elif nlf:
+            dset[idx] = nlf_encode(obj.get_protein())
         labels[idx] = 1
         idx += 1
 
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8)
 
-    #logistic(X_train, X_test, y_train, y_test)
-    #random_forest(X_train, X_test, y_train, y_test)
+    logistic(X_train, X_test, y_train, y_test)
+    random_forest(X_train, X_test, y_train, y_test)
     svms(X_train, X_test, y_train, y_test)
 
 def random_forest(X_train, X_test, y_train, y_test):
