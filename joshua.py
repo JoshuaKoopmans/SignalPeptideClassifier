@@ -5,7 +5,6 @@
 # Last Edited: 12-03-2020                    #
 ##############################################
 from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report
-
 import domain.Signal_class as SigClass
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
@@ -18,7 +17,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 
-def main():
+def main(one_hot=False, nlf=True):
     """
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
@@ -27,20 +26,24 @@ def main():
 
     peptide_dict = parse_proteins(proteins)
     labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
-    dset = np.zeros([labels.shape[0], 70 * 21])
+    if one_hot:
+        n = 21
+    elif nlf:
+        n = 18
+    dset = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
-        dset[idx] = hotter(obj.get_protein())
+        dset[idx] = nlf_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
-        dset[idx] = hotter(obj.get_protein())
+        dset[idx] = nlf_encode(obj.get_protein())
         labels[idx] = 1
         idx += 1
 
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8)
-    linear(X_train, X_test, y_train, y_test, False)
-    linear(X_train, X_test, y_train, y_test, True)
+
+    logistic(X_train, X_test, y_train, y_test)
     random_forest(X_train, X_test, y_train, y_test)
     svms(X_train, X_test, y_train, y_test)
 
@@ -49,10 +52,15 @@ def random_forest(X_train, X_test, y_train, y_test):
     X_train = sc.fit_transform(X_train)
     X_test = sc.transform(X_test)
 
-    regr = RandomForestRegressor(n_estimators=20, random_state=0)
+    regr = RandomForestRegressor(n_estimators=100, random_state=0, min_samples_split=5, min_samples_leaf=4, max_features="auto", max_depth=30)
+
     print('=' * 5 + ' Random Forest ' + '=' * 5)
+    print(regr.get_params())
     regr.fit(X_train, y_train)
     y_pred = regr.predict(X_test)
+    fpr, tpr, thresholds = metrics.roc_curve(y_test, y_pred, pos_label=2)
+    plt.plot(tpr, fpr, thresholds)
+    plt.show()
     print('Mean Absolute Error:', metrics.mean_absolute_error(y_test, y_pred))
     print('Mean Squared Error:', metrics.mean_squared_error(y_test, y_pred))
     print('Root Mean Squared Error:', np.sqrt(metrics.mean_squared_error(y_test, y_pred)))
@@ -75,16 +83,14 @@ def svms(X_train, X_test, y_train, y_test):
     print('\nConfusion matrix:\n', metrics.confusion_matrix(y_test, predicted))
 
 
-def linear(X_train, X_test, y_train, y_test, linear=True):
-    # Create linear or logistic regression object
-    if not linear:
-        regr = linear_model.LogisticRegression(max_iter=10000000, class_weight={1: np.array(1000000), 0: 1.0})
-        print("="*5 + " Logistic " + "="*5)
-    else:
-        regr = linear_model.LinearRegression()
-        print("=" * 5 + " Linear " + "=" * 5)
+def logistic(X_train, X_test, y_train, y_test):
+    # Create logistic regression object
 
-    # Train the model using the training sets
+    regr = linear_model.LogisticRegression(max_iter=1000000, class_weight="balanced")
+    # class_weight={1: np.array(1000000), 0: 1.0}
+    print("="*5 + " Logistic " + "="*5)
+
+    # Train the model using the training sets                                                                                                                                
     regr.fit(X_train, y_train)
 
     # Make predictions using the testing set
@@ -155,9 +161,50 @@ def hotter(seq="M" * 7):
     return matrix.reshape(21 * len(seq))
 
 
+#read the matrix a csv file on github
+nlf = pd.read_csv('resources/NLF.csv',
+                  index_col=0)
+
+def nlf_encode(seq):
+    x = pd.DataFrame([nlf[i] for i in seq]).reset_index(drop=True)
+    e = x.values.flatten()
+    return e
+
+
+def random_grid_rf_parameters():
+    # Number of trees in random forest
+    n_estimators = [int(x) for x in np.linspace(start=200, stop=2000, num=10)]
+    # Number of features to consider at every split
+    max_features = ['auto', 'sqrt']
+    # Maximum number of levels in tree
+    max_depth = [int(x) for x in np.linspace(10, 110, num=11)]
+    max_depth.append(None)
+    # Minimum number of samples required to split a node
+    min_samples_split = [2, 5, 10]
+    # Minimum number of samples required at each leaf node
+    min_samples_leaf = [1, 2, 4]
+    # Method of selecting samples for training each tree
+    bootstrap = [True, False]
+    # Create the random grid
+    random_grid = {'n_estimators': n_estimators,
+                   'max_features': max_features,
+                   'max_depth': max_depth,
+                   'min_samples_split': min_samples_split,
+                   'min_samples_leaf': min_samples_leaf,
+                   'bootstrap': bootstrap}
+    return random_grid
+
+def plot_roc_cur(fper, tper):
+    plt.plot(fper, tper, color='orange', label='ROC')
+    plt.plot([0, 1], [0, 1], color='darkblue', linestyle='--')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.legend()
+    plt.show()
 
 
 main()
-#hotter()
+
 
 
