@@ -5,17 +5,16 @@
 # Last Edited: 23-03-2020                    #
 ##############################################
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report, roc_curve, \
+from sklearn.metrics import accuracy_score, roc_curve, \
     roc_auc_score
 import domain.Signal_class as SigClass
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn import svm, metrics, linear_model
+from sklearn import svm
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 import epitopepredict as ep
 
 RANDOM_SEED = 314
@@ -90,75 +89,10 @@ def main(one_hot=True, nlf=False, blosum=False):
 
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
 
-    combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test)
+    train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
 
 
-def random_forest(X_train, X_test, y_train, y_test):
-    sc = StandardScaler()
-    X_train = sc.fit_transform(X_train)
-    X_test = sc.transform(X_test)
-
-    regr = RandomForestRegressor(n_estimators=100, random_state=0, min_samples_split=5, min_samples_leaf=4,
-                                 max_features="auto", max_depth=30)
-
-    print('=' * 5 + ' Random Forest ' + '=' * 5)
-    print(regr.get_params())
-    regr.fit(X_train, y_train)
-    y_pred = regr.predict(X_test)
-    fpr, tpr, thresholds = metrics.roc_curve(y_test, y_pred, pos_label=2)
-    plt.plot(tpr, fpr, thresholds)
-    plt.show()
-    print('Mean Absolute Error:', metrics.mean_absolute_error(y_test, y_pred))
-    print('Mean Squared Error:', metrics.mean_squared_error(y_test, y_pred))
-    print('Root Mean Squared Error:', np.sqrt(metrics.mean_squared_error(y_test, y_pred)))
-
-    print(confusion_matrix(y_test, y_pred.round()))
-    print(classification_report(y_test, y_pred.round()))
-    print('Accuracy Score :', accuracy_score(y_test, y_pred.round()))
-
-
-def svms(X_train, X_test, y_train, y_test):
-    svc = svm.SVC(kernel='linear')
-    print('=' * 5 + ' SVM ' + '=' * 5)
-    svc.fit(X_train, y_train)
-
-    predicted = svc.predict(X_test)
-    score = svc.score(X_test, y_test)
-
-    print('\nScore ', score)
-    print('\nResult Overview\n', metrics.classification_report(y_test, predicted))
-    print('\nConfusion matrix:\n', metrics.confusion_matrix(y_test, predicted))
-
-
-def logistic(X_train, X_test, y_train, y_test):
-    # Create logistic regression object
-
-    regr = linear_model.LogisticRegression(max_iter=1000000, class_weight="balanced")
-    # class_weight={1: np.array(1000000), 0: 1.0}
-    print("=" * 5 + " Logistic " + "=" * 5)
-
-    # Train the model using the training sets                                                                                                                                
-    regr.fit(X_train, y_train)
-
-    # Make predictions using the testing set
-    y_pred = regr.predict(X_test)
-
-    # The coefficients
-    print('Coefficients: \n', regr.coef_)
-    # The mean squared error
-    print('Mean squared error: %.2f'
-          % mean_squared_error(y_test, y_pred))
-    # The coefficient of determination: 1 is perfect prediction
-    print('Coefficient of determination: %.2f'
-          % r2_score(y_test, y_pred))
-
-    print(confusion_matrix(y_test, y_pred.round()))
-    print(set(list(y_pred.round())))
-
-    print('Accuracy Score :', accuracy_score(y_test, y_pred.round()))
-
-
-def combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test):
+def train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test):
     """
     Models (or classifiers) are put into a list and one by one are fitting and predicting using the train and test sets.
     The False Positive Rate (FPR), False Negative  Rate (FNR) and Area Under the Curve (AUC) are computed
@@ -167,10 +101,9 @@ def combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test):
 
     :param X_train: peptide sequences in train set
     :param X_test: peptide sequences in test set
-    :param y_train: actual class of the peptide sequences in train set
-    :param y_test: actual class of the peptide sequences in test set
+    :param dset_test: actual class of the peptide sequences in benchmark set
+    :param labels_test: actual class of the peptide sequences in benchmark set
     :param encoder: name of the encoder used
-    :return: images of the ROC-curve plots are saved
     """
     classifiers = [LogisticRegression(max_iter=1000000, class_weight="balanced", random_state=RANDOM_SEED),
                    svm.SVC(kernel='linear', probability=True, class_weight="balanced", random_state=RANDOM_SEED),
@@ -184,6 +117,7 @@ def combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test):
     for cls in classifiers:
         model = cls.fit(X_train, y_train)
         yproba = model.predict_proba(dset_test)[::, 1]
+        y_pred = cls.predict(dset_test)
 
         fpr, tpr, _ = roc_curve(labels_test, yproba)
         auc = roc_auc_score(labels_test, yproba)
@@ -193,28 +127,32 @@ def combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test):
                                             'tpr': tpr,
                                             'auc': auc}, ignore_index=True)
 
+        print("=" * 5 + cls.__class__.__name__ + "+" + encoder + "=" * 5)
+        print("Confusion matrix: ")
+        print(confusion_matrix(labels_test, y_pred.round()))
+        print('Accuracy Score :', accuracy_score(labels_test, y_pred.round()))
+
+    plot_multple_roc(encoder, result_table)
+
+
+def plot_multple_roc(encoder, result_table):
     # Set name of the classifiers as index labels
     result_table.set_index('classifiers', inplace=True)
-
     fig = plt.figure(figsize=(8, 6))
-
     for i in result_table.index:
         plt.plot(result_table.loc[i]['fpr'],
                  result_table.loc[i]['tpr'],
                  label="{}, AUC={:.3f}".format(i, result_table.loc[i]['auc']))
-
     plt.plot([0, 1], [0, 1], color='orange', linestyle='--')
-
     plt.xticks(np.arange(0.0, 1.1, step=0.1))
     plt.xlabel("False Positive Rate", fontsize=15)
-
     plt.yticks(np.arange(0.0, 1.1, step=0.1))
     plt.ylabel("True Positive Rate", fontsize=15)
-
     plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
     plt.legend(prop={'size': 13}, loc='lower right')
-
-    fig.savefig('multiple_roc_curve_' + encoder + '.png')
+    filename = 'multiple_roc_curve_' + encoder + '.png'
+    fig.savefig(filename)
+    print("Saved " + filename)
 
 
 def open_and_read_file(filename):
