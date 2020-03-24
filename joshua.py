@@ -28,10 +28,10 @@ def main():
     labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
     encoders = ["one_hot", "nlf", "blosum"]
     for encoder in encoders:
-        do_classification(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
+        X_train, dset_test, y_train, labels_test = prepare_classificatio_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
+        train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
 
-
-def do_classification(labels, labels_test, peptide_dict, peptide_dict_test, encoder):
+def prepare_classificatio_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder):
     """
     :param labels: labels for the train set
     :param labels_test:  labels for the test/ benchmark set
@@ -88,8 +88,8 @@ def do_classification(labels, labels_test, peptide_dict, peptide_dict_test, enco
             dset_test[idx] = blosum_encode(obj.get_protein())
         labels_test[idx] = 1
         idx += 1
-    X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
-    train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
+    return train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
+
 
 
 def parse_datasets():
