@@ -21,75 +21,89 @@ RANDOM_SEED = 314
 blosum = ep.blosum62
 
 
-def main(one_hot=True, nlf=False, blosum=False):
+def main():
     """
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
+    labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
+    classifiers = ["one_hot", "nlf", "blosum"]
+    for classifier in classifiers:
+        do_classification(labels, labels_test, peptide_dict, peptide_dict_test, classifier)
 
-    proteins = open_and_read_file("resources/train_set.fasta.txt")
-    proteins_test = open_and_read_file("resources/benchmark_set.fasta.txt")
 
-    peptide_dict = parse_proteins(proteins)
-    peptide_dict_test = parse_proteins(proteins_test)
-
-    labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
-    labels_test = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
-
-    if one_hot:
+def do_classification(labels, labels_test, peptide_dict, peptide_dict_test, classifier):
+    """
+    :param labels: labels for the train set
+    :param labels_test:  labels for the test/ benchmark set
+    :param peptide_dict: dictionary with the peptides for SP/NO_SP for train set
+    :param peptide_dict_test: dictionary with the peptides for SP/NO_SP for test/benchmark set
+    :param classifier: classifier used
+    """
+    if classifier == "one_hot":
         n = 21
         encoder = "One-Hot"
-    elif nlf:
+    elif classifier == "nlf":
         n = 18
         encoder = "NLF"
-    elif blosum:
+    elif classifier == "blosum":
         n = 24
         encoder = "BLOSUM62"
-
     dset = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
-        if one_hot:
+        if classifier == "one_hot":
             dset[idx] = one_hot_encode(obj.get_protein())
-        elif nlf:
+        elif classifier == "nlf":
             dset[idx] = nlf_encode(obj.get_protein())
-        elif blosum:
+        elif classifier == "blosum":
             dset[idx] = blosum_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
-        if one_hot:
+        if classifier == "one_hot":
             dset[idx] = one_hot_encode(obj.get_protein())
-        elif nlf:
+        elif classifier == "nlf":
             dset[idx] = nlf_encode(obj.get_protein())
-        elif blosum:
+        elif classifier == "blosum":
             dset[idx] = blosum_encode(obj.get_protein())
         labels[idx] = 1
         idx += 1
-
     dset_test = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict_test["no_sp"]:
-        if one_hot:
+        if classifier == "one_hot":
             dset_test[idx] = one_hot_encode(obj.get_protein())
-        elif nlf:
+        elif classifier == "nlf":
             dset_test[idx] = nlf_encode(obj.get_protein())
-        elif blosum:
+        elif classifier == "blosum":
             dset_test[idx] = blosum_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict_test["sp"]:
-        if one_hot:
+        if classifier == "one_hot":
             dset_test[idx] = one_hot_encode(obj.get_protein())
-        elif nlf:
+        elif classifier == "nlf":
             dset_test[idx] = nlf_encode(obj.get_protein())
-        elif blosum:
+        elif classifier == "blosum":
             dset_test[idx] = blosum_encode(obj.get_protein())
         labels_test[idx] = 1
         idx += 1
-
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
-
     train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
+
+
+def parse_datasets():
+    """
+    Reads the train/test and benchmark files and creates dictionaries with peptides
+    :return: labels and peptides for the train/test and benchmark datasets
+    """
+    proteins = open_and_read_file("resources/train_set.fasta.txt")
+    proteins_test = open_and_read_file("resources/benchmark_set.fasta.txt")
+    peptide_dict = parse_proteins(proteins)
+    peptide_dict_test = parse_proteins(proteins_test)
+    labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
+    labels_test = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
+    return labels, labels_test, peptide_dict, peptide_dict_test
 
 
 def train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test):
@@ -246,9 +260,6 @@ def blosum_encode(seq):
 # Read the NLF matrix (.csv) for the NLF encoder
 nlf = pd.read_csv('resources/NLF.csv', index_col=0)
 
-# Run script with One-Hot encoder
-#main(True, False, False)
-# Run script with NLF encoder
-main(False, True, False)
-# Run script with BLOSUM62 encoder
-main(False, False, True)
+# Run script
+main()
+
