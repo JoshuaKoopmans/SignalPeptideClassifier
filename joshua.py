@@ -27,10 +27,15 @@ def main(one_hot=True, nlf=False, blosum=False):
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
 
-    proteins = open_and_read_file()
+    proteins = open_and_read_file("resources/train_set.fasta.txt")
+    proteins_test = open_and_read_file("resources/benchmark_set.fasta.txt")
 
     peptide_dict = parse_proteins(proteins)
+    peptide_dict_test = parse_proteins(proteins_test)
+
     labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
+    labels_test = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
+
     if one_hot:
         n = 21
         encoder = "One-Hot"
@@ -62,12 +67,30 @@ def main(one_hot=True, nlf=False, blosum=False):
         labels[idx] = 1
         idx += 1
 
+    dset_test = np.zeros([labels.shape[0], 70 * n])
+    idx = 0
+    for obj in peptide_dict_test["no_sp"]:
+        if one_hot:
+            dset_test[idx] = one_hot_encode(obj.get_protein())
+        elif nlf:
+            dset_test[idx] = nlf_encode(obj.get_protein())
+        elif blosum:
+            dset_test[idx] = blosum_encode(obj.get_protein())
+        idx += 1
+    # Add label "1" to sequences with SP
+    for obj in peptide_dict_test["sp"]:
+        if one_hot:
+            dset_test[idx] = one_hot_encode(obj.get_protein())
+        elif nlf:
+            dset_test[idx] = nlf_encode(obj.get_protein())
+        elif blosum:
+            dset_test[idx] = blosum_encode(obj.get_protein())
+        labels_test[idx] = 1
+        idx += 1
+
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
 
-    logistic(X_train, X_test, y_train, y_test)
-    random_forest(X_train, X_test, y_train, y_test)
-    svms(X_train, X_test, y_train, y_test)
-    combo(X_train, X_test, y_train, y_test, encoder)
+    combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test)
 
 
 def random_forest(X_train, X_test, y_train, y_test):
@@ -135,7 +158,7 @@ def logistic(X_train, X_test, y_train, y_test):
     print('Accuracy Score :', accuracy_score(y_test, y_pred.round()))
 
 
-def combo(X_train, X_test, y_train, y_test, encoder):
+def combo(X_train, X_test, y_train, y_test, encoder, dset_test, labels_test):
     """
     Models (or classifiers) are put into a list and one by one are fitting and predicting using the train and test sets.
     The False Positive Rate (FPR), False Negative  Rate (FNR) and Area Under the Curve (AUC) are computed
@@ -150,8 +173,8 @@ def combo(X_train, X_test, y_train, y_test, encoder):
     :return: images of the ROC-curve plots are saved
     """
     classifiers = [LogisticRegression(max_iter=1000000, class_weight="balanced", random_state=RANDOM_SEED),
-                   svm.SVC(kernel='linear', probability=True, random_state=RANDOM_SEED),
-                   RandomForestClassifier(n_estimators=400, random_state=RANDOM_SEED, min_samples_split=8,
+                   svm.SVC(kernel='linear', probability=True, class_weight="balanced", random_state=RANDOM_SEED),
+                   RandomForestClassifier(n_estimators=400, class_weight="balanced", random_state=RANDOM_SEED, min_samples_split=8,
                                           min_samples_leaf=7, max_features="auto", max_depth=50)]
 
     # Define a result table as a DataFrame
@@ -160,10 +183,10 @@ def combo(X_train, X_test, y_train, y_test, encoder):
     # Train the models and record the results
     for cls in classifiers:
         model = cls.fit(X_train, y_train)
-        yproba = model.predict_proba(X_test)[::, 1]
+        yproba = model.predict_proba(dset_test)[::, 1]
 
-        fpr, tpr, _ = roc_curve(y_test, yproba)
-        auc = roc_auc_score(y_test, yproba)
+        fpr, tpr, _ = roc_curve(labels_test, yproba)
+        auc = roc_auc_score(labels_test, yproba)
 
         result_table = result_table.append({'classifiers': cls.__class__.__name__,
                                             'fpr': fpr,
@@ -194,13 +217,13 @@ def combo(X_train, X_test, y_train, y_test, encoder):
     fig.savefig('multiple_roc_curve_' + encoder + '.png')
 
 
-def open_and_read_file():
+def open_and_read_file(filename):
     """
     Open the training set file and returns individual records.
 
     :return: List with entries
     """
-    with open("resources/train_set.fasta.txt") as file:
+    with open(filename) as file:
         entries = []
         entry = ""
         for line in file:
