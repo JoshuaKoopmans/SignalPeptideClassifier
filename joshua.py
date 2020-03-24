@@ -26,65 +26,65 @@ def main():
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
     labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
-    classifiers = ["one_hot", "nlf", "blosum"]
-    for classifier in classifiers:
-        do_classification(labels, labels_test, peptide_dict, peptide_dict_test, classifier)
+    encoders = ["one_hot", "nlf", "blosum"]
+    for encoder in encoders:
+        do_classification(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
 
 
-def do_classification(labels, labels_test, peptide_dict, peptide_dict_test, classifier):
+def do_classification(labels, labels_test, peptide_dict, peptide_dict_test, encoder):
     """
     :param labels: labels for the train set
     :param labels_test:  labels for the test/ benchmark set
     :param peptide_dict: dictionary with the peptides for SP/NO_SP for train set
     :param peptide_dict_test: dictionary with the peptides for SP/NO_SP for test/benchmark set
-    :param classifier: classifier used
+    :param encoder: encoder used
     """
-    if classifier == "one_hot":
+    if encoder == "one_hot":
         n = 21
         encoder = "One-Hot"
-    elif classifier == "nlf":
+    elif encoder == "nlf":
         n = 18
         encoder = "NLF"
-    elif classifier == "blosum":
+    elif encoder == "blosum":
         n = 24
         encoder = "BLOSUM62"
     dset = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
-        if classifier == "one_hot":
+        if encoder == "one_hot":
             dset[idx] = one_hot_encode(obj.get_protein())
-        elif classifier == "nlf":
+        elif encoder == "nlf":
             dset[idx] = nlf_encode(obj.get_protein())
-        elif classifier == "blosum":
+        elif encoder == "blosum":
             dset[idx] = blosum_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
-        if classifier == "one_hot":
+        if encoder == "one_hot":
             dset[idx] = one_hot_encode(obj.get_protein())
-        elif classifier == "nlf":
+        elif encoder == "nlf":
             dset[idx] = nlf_encode(obj.get_protein())
-        elif classifier == "blosum":
+        elif encoder == "blosum":
             dset[idx] = blosum_encode(obj.get_protein())
         labels[idx] = 1
         idx += 1
     dset_test = np.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict_test["no_sp"]:
-        if classifier == "one_hot":
+        if encoder == "one_hot":
             dset_test[idx] = one_hot_encode(obj.get_protein())
-        elif classifier == "nlf":
+        elif encoder == "nlf":
             dset_test[idx] = nlf_encode(obj.get_protein())
-        elif classifier == "blosum":
+        elif encoder == "blosum":
             dset_test[idx] = blosum_encode(obj.get_protein())
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict_test["sp"]:
-        if classifier == "one_hot":
+        if encoder == "one_hot":
             dset_test[idx] = one_hot_encode(obj.get_protein())
-        elif classifier == "nlf":
+        elif encoder == "nlf":
             dset_test[idx] = nlf_encode(obj.get_protein())
-        elif classifier == "blosum":
+        elif encoder == "blosum":
             dset_test[idx] = blosum_encode(obj.get_protein())
         labels_test[idx] = 1
         idx += 1
