@@ -136,6 +136,12 @@ def train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test
 
 
 def plot_multple_roc(encoder, result_table):
+    """
+    The roc curve of the different classifiers are plotted in one graph
+    :param encoder: name of the encoder used
+    :param result_table: table with the output from the differen classifiers
+    :return: saved images with the plots
+    """
     # Set name of the classifiers as index labels
     result_table.set_index('classifiers', inplace=True)
     fig = plt.figure(figsize=(8, 6))
@@ -241,7 +247,7 @@ def blosum_encode(seq):
 nlf = pd.read_csv('resources/NLF.csv', index_col=0)
 
 # Run script with One-Hot encoder
-main(True, False, False)
+#main(True, False, False)
 # Run script with NLF encoder
 main(False, True, False)
 # Run script with BLOSUM62 encoder
