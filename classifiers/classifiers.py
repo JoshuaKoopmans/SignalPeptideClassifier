@@ -4,6 +4,9 @@
 # Date: 13-02-2020                           #
 # Last Edited: 25-03-2020                    #
 ##############################################
+from datetime import datetime
+import os
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_curve, \
     roc_auc_score
@@ -135,6 +138,10 @@ def train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test
 
     # Train the models and record the results
     for cls in classifiers:
+        now = datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        print("Start Time =", current_time)
+
         model = cls.fit(X_train, y_train)
         yproba = model.predict_proba(dset_test)[::, 1]
         y_pred = cls.predict(dset_test)
@@ -177,12 +184,12 @@ def plot_multple_roc(encoder, result_table):
     plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
     plt.legend(prop={'size': 13}, loc='lower right')
     results_dir = "../results"
-    if not np.os.path.exists(results_dir):
-        np.os.makedirs(results_dir)
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
     if benchmark:
-        filename = np.os.path.join(results_dir ,'multiple_roc_curve_' + encoder + '.png')
+        filename = os.path.join(results_dir ,'multiple_roc_curve_' + encoder + '.png')
     elif not benchmark:
-        filename = np.os.path.join(results_dir, 'multiple_roc_curve_' + encoder + '_benchmark.png')
+        filename = os.path.join(results_dir, 'multiple_roc_curve_' + encoder + '_benchmark.png')
     fig.savefig(filename)
     print("Saved " + filename)
 
