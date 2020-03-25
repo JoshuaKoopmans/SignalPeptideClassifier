@@ -15,10 +15,10 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
-#import epitopepredict as ep
+import epitopepredict as ep
 
 RANDOM_SEED = 314
-#blosum = ep.blosum62
+blosum = ep.blosum62
 
 
 def main(benchmark):
@@ -26,7 +26,7 @@ def main(benchmark):
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
     labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
-    encoders = ["one_hot", "nlf"]
+    encoders = ["one_hot", "nlf", "blosum"]
     for encoder in encoders:
         X_train, X_test, y_train, y_test, dset_test, labels_test = prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
         if benchmark:
@@ -258,9 +258,9 @@ def blosum_encode(seq):
     :return: vector for each amino acid, matrix for the entire sequence
     """
     s = list(seq)
-    #x = pd.DataFrame([blosum[i] for i in seq]).reset_index(drop=True)
-    #e = x.values.flatten()
-    return s
+    x = pd.DataFrame([blosum[i] for i in seq]).reset_index(drop=True)
+    e = x.values.flatten()
+    return e
 
 
 # Read the NLF matrix (.csv) for the NLF encoder
