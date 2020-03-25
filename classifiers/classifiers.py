@@ -19,9 +19,9 @@ import epitopepredict as ep
 
 RANDOM_SEED = 314
 blosum = ep.blosum62
+benchmark = False #modify this parameter to True to validate with benchmark set
 
-
-def main(benchmark):
+def main():
     """
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
@@ -179,7 +179,10 @@ def plot_multple_roc(encoder, result_table):
     results_dir = "../results"
     if not np.os.path.exists(results_dir):
         np.os.makedirs(results_dir)
-    filename = np.os.path.join(results_dir ,'multiple_roc_curve_' + encoder + '.png')
+    if benchmark:
+        filename = np.os.path.join(results_dir ,'multiple_roc_curve_' + encoder + '.png')
+    elif not benchmark:
+        filename = np.os.path.join(results_dir, 'multiple_roc_curve_' + encoder + '_benchmark.png')
     fig.savefig(filename)
     print("Saved " + filename)
 
@@ -269,8 +272,5 @@ def blosum_encode(seq):
 # Read the NLF matrix (.csv) for the NLF encoder
 nlf = pd.read_csv('../resources/NLF.csv', index_col=0)
 
-# Run script with splitted train/test set validation
-main(False)
-# Run script with benchmark validation
-#main(True)
+main()
 
