@@ -1,8 +1,8 @@
 ##############################################
-# Authors: Joshua, Michelle                  #
+# Authors: Joshua, Michelle, Thijs           #
 # Description: Signal Peptide dataset parser #
 # Date: 13-02-2020                           #
-# Last Edited: 23-03-2020                    #
+# Last Edited: 25-03-2020                    #
 ##############################################
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_curve, \
@@ -15,21 +15,27 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
-import epitopepredict as ep
+#import epitopepredict as ep
 
 RANDOM_SEED = 314
-blosum = ep.blosum62
+#blosum = ep.blosum62
 
 
-def main():
+def main(benchmark):
     """
     Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
     """
     labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
-    encoders = ["one_hot", "nlf", "blosum"]
+    encoders = ["one_hot", "nlf"]
     for encoder in encoders:
-        X_train, dset_test, y_train, labels_test = prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
-        train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
+        X_train, X_test, y_train, y_test, dset_test, labels_test = prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
+        if benchmark:
+            print("Validating with benchmark set")
+            train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
+        elif not benchmark:
+            print("Validating with splitted train set")
+            train_multiple_classifiers(X_train, y_train, encoder, X_test, y_test)
+
 
 def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder):
     """
@@ -89,7 +95,7 @@ def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_
         labels_test[idx] = 1
         idx += 1
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
-    return  X_train, dset_test, y_train, labels_test
+    return  X_train, X_test, y_train, y_test, dset_test, labels_test
 
 
 def parse_datasets():
@@ -97,8 +103,8 @@ def parse_datasets():
     Reads the train/test and benchmark files and creates dictionaries with peptides
     :return: labels and peptides for the train/test and benchmark datasets
     """
-    proteins = open_and_read_file("resources/train_set.fasta.txt")
-    proteins_test = open_and_read_file("resources/benchmark_set.fasta.txt")
+    proteins = open_and_read_file("../resources/train_set.fasta.txt")
+    proteins_test = open_and_read_file("../resources/benchmark_set.fasta.txt")
     peptide_dict = parse_proteins(proteins)
     peptide_dict_test = parse_proteins(proteins_test)
     labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
@@ -170,7 +176,7 @@ def plot_multple_roc(encoder, result_table):
     plt.ylabel("True Positive Rate", fontsize=15)
     plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
     plt.legend(prop={'size': 13}, loc='lower right')
-    filename = 'multiple_roc_curve_' + encoder + '.png'
+    filename = '../multiple_roc_curve_' + encoder + '.png'
     fig.savefig(filename)
     print("Saved " + filename)
 
@@ -252,14 +258,16 @@ def blosum_encode(seq):
     :return: vector for each amino acid, matrix for the entire sequence
     """
     s = list(seq)
-    x = pd.DataFrame([blosum[i] for i in seq]).reset_index(drop=True)
-    e = x.values.flatten()
-    return e
+    #x = pd.DataFrame([blosum[i] for i in seq]).reset_index(drop=True)
+    #e = x.values.flatten()
+    return s
 
 
 # Read the NLF matrix (.csv) for the NLF encoder
-nlf = pd.read_csv('resources/NLF.csv', index_col=0)
+nlf = pd.read_csv('../resources/NLF.csv', index_col=0)
 
-# Run script
-main()
+# Run script with splitted train/test set validation
+main(False)
+# Run script with benchmark validation
+#main(True)
 
