@@ -176,7 +176,10 @@ def plot_multple_roc(encoder, result_table):
     plt.ylabel("True Positive Rate", fontsize=15)
     plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
     plt.legend(prop={'size': 13}, loc='lower right')
-    filename = '../multiple_roc_curve_' + encoder + '.png'
+    results_dir = "../results"
+    if not np.os.path.exists(results_dir):
+        np.os.makedirs(results_dir)
+    filename = np.os.path.join(results_dir ,'multiple_roc_curve_' + encoder + '.png')
     fig.savefig(filename)
     print("Saved " + filename)
 
