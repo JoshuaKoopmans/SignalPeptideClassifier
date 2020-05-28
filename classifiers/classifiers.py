@@ -7,6 +7,8 @@
 from datetime import datetime
 import os
 
+import torch
+import torch.nn.functional as F
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_curve, \
     roc_auc_score
@@ -14,11 +16,12 @@ import domain.Signal_class as SigClass
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn import svm
-from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 import epitopepredict as ep
+from model import ClassifierModel
+import matplotlib.pyplot as plt
 
 RANDOM_SEED = 314
 blosum = ep.blosum62
@@ -26,18 +29,94 @@ benchmark = False #modify this parameter to True to validate with benchmark set
 
 def main():
     """
-    Central logic of this program: Opening files and parsing resulting in a dictionary with objects.
+    Central logic of this program: Opening files and parsing resulting into a dictionary with objects.
     """
     labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
     encoders = ["one_hot", "nlf", "blosum"]
+    encoders = [encoders[0]]
     for encoder in encoders:
-        X_train, X_test, y_train, y_test, dset_test, labels_test = prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
+        X_train, X_test, y_train, y_test, dset_test, labels_test, input_dim = prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder)
         if benchmark:
             print("Validating with benchmark set")
-            train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
+
         elif not benchmark:
             print("Validating with splitted train set")
-            train_multiple_classifiers(X_train, y_train, encoder, X_test, y_test)
+            seqs = X_train.view(len(X_train), 21, 70)
+            labels = y_train
+            net = ClassifierModel(input_dim)
+            epochs = 30
+
+
+            losses = []
+            optimizer = torch.optim.Adam(net.parameters())
+            for epoch in range(epochs):
+                print("Epoch " + str(epoch))
+                epoch_loss = 0
+                correct = 0
+                shuffle = torch.randperm(len(seqs))
+                seqs = seqs[shuffle]
+                labels = labels[shuffle]
+                predicted_list = []
+                total_labels = []
+                for minibatchindex in range(0, len(seqs), 32):
+                    mb_data = seqs[minibatchindex:minibatchindex + 32]
+                    mb_labels = labels[minibatchindex:minibatchindex + 32]
+
+                    prediction = net(mb_data)
+
+                    predicted_list.append(prediction[0][0][0].flatten().detach().numpy())
+                    total_labels.append(mb_labels[0].detach().numpy())
+                    # print(prediction.shape)
+                    # print(mb_labels.shape)
+                    #loss = ((prediction-mb_labels)**2).sum()
+                    loss = F.binary_cross_entropy(prediction, mb_labels)
+
+                    loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
+
+                    # print((prediction == mb_labels).sum())
+                    # print((prediction != mb_labels).sum())
+
+                    correct += (prediction.argmax() == mb_labels).float().sum()
+                    accuracy = 100 * correct / len(mb_data)
+                    epoch_loss += float(loss.detach())
+                    # print(prediction)
+                    # print(labels_test)
+
+                losses.append(epoch_loss)
+                print(' Epoch loss: %.20f, Accuracy %.20f' % (epoch_loss / 100, accuracy))
+
+
+            net.eval()
+            output = net(seqs).view(-1, 1)
+            # print(output)
+            # for i, n in enumerate(output):
+            #     print(n, labels[i])
+            fpr, tpr, _ = roc_curve(total_labels, predicted_list)
+            auc = roc_auc_score(total_labels, predicted_list)
+            fig = plt.figure(figsize=(8, 6))
+
+            plt.plot(fpr, tpr, label="AUC={:.3f}".format(auc))
+            plt.plot([0, 1], [0, 1], color='orange', linestyle='--')
+            plt.xticks(np.arange(0.0, 1.1, step=0.1))
+            plt.xlabel("False Positive Rate", fontsize=15)
+            plt.yticks(np.arange(0.0, 1.1, step=0.1))
+            plt.ylabel("True Positive Rate", fontsize=15)
+            plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
+            plt.legend(prop={'size': 13}, loc='lower right')
+            plt.savefig("roc.png")
+
+            plt.figure(2)
+            plt.plot(range(epochs), losses)
+            plt.ylabel('Loss')
+            plt.xlabel('Epoch')
+            # plt.plot(fpr_list, tpr_list)
+            #
+            #plt.show()
+            plt.savefig("mygraph.png")
+
+
 
 
 def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder):
@@ -50,14 +129,14 @@ def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_
     """
     if encoder == "one_hot":
         n = 21
-        encoder = "One-Hot"
+        #encoder = "One-Hot"
     elif encoder == "nlf":
         n = 18
-        encoder = "NLF"
+        #encoder = "NLF"
     elif encoder == "blosum":
         n = 24
-        encoder = "BLOSUM62"
-    dset = np.zeros([labels.shape[0], 70 * n])
+        #encoder = "BLOSUM62"
+    dset = torch.zeros([labels.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict["no_sp"]:
         if encoder == "one_hot":
@@ -66,6 +145,7 @@ def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_
             dset[idx] = nlf_encode(obj.get_protein())
         elif encoder == "blosum":
             dset[idx] = blosum_encode(obj.get_protein())
+        #labels[idx][0] = 1
         idx += 1
     # Add label "1" to sequences with SP
     for obj in peptide_dict["sp"]:
@@ -75,9 +155,10 @@ def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_
             dset[idx] = nlf_encode(obj.get_protein())
         elif encoder == "blosum":
             dset[idx] = blosum_encode(obj.get_protein())
+        #labels[idx][1] = 1
         labels[idx] = 1
         idx += 1
-    dset_test = np.zeros([labels.shape[0], 70 * n])
+    dset_test = np.zeros([labels_test.shape[0], 70 * n])
     idx = 0
     for obj in peptide_dict_test["no_sp"]:
         if encoder == "one_hot":
@@ -98,7 +179,7 @@ def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_
         labels_test[idx] = 1
         idx += 1
     X_train, X_test, y_train, y_test = train_test_split(dset, labels, train_size=0.8, random_state=RANDOM_SEED)
-    return  X_train, X_test, y_train, y_test, dset_test, labels_test
+    return X_train, X_test, y_train, y_test, dset_test, labels_test, n
 
 
 def parse_datasets():
@@ -110,8 +191,8 @@ def parse_datasets():
     proteins_test = open_and_read_file("../resources/benchmark_set.fasta.txt")
     peptide_dict = parse_proteins(proteins)
     peptide_dict_test = parse_proteins(proteins_test)
-    labels = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
-    labels_test = np.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
+    labels = torch.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
+    labels_test = torch.zeros(len(peptide_dict["no_sp"]) + len(peptide_dict["sp"]))
     return labels, labels_test, peptide_dict, peptide_dict_test
 
 
@@ -245,7 +326,7 @@ def one_hot_encode(seq):
        """
     codes = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L',
              'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y', '*']
-    matrix = np.zeros([21, len(seq)])
+    matrix = torch.zeros([21, len(seq)])
     for pos, aa in enumerate(seq):
         matrix[codes.index(aa), pos] = 1
     return matrix.reshape(21 * len(seq))
@@ -258,9 +339,9 @@ def nlf_encode(seq):
        :param seq: peptide sequence
        :return: vector for each amino acid, matrix for the entire sequence
        """
-    x = pd.DataFrame([nlf[i] for i in seq]).reset_index(drop=True)
+    x = pd.DataFrame([nlf[i] for i in seq])
     e = x.values.flatten()
-    return e
+    return torch.from_numpy(e)
 
 
 def blosum_encode(seq):
@@ -273,7 +354,7 @@ def blosum_encode(seq):
     s = list(seq)
     x = pd.DataFrame([blosum[i] for i in seq]).reset_index(drop=True)
     e = x.values.flatten()
-    return e
+    return torch.from_numpy(e)
 
 
 # Read the NLF matrix (.csv) for the NLF encoder
