@@ -4,7 +4,7 @@
 ### Members: Joshua Koopmans, Michelle de Groot, Thijs Weenink
 ### Presentation in week 6 (19 March 2020)
 
-[Click here for report](signal_peptide_classifiers_a_report.pdf)<br>
+[Click here for report](SIGNAL_PEPTIDE_CLASSIFIERS_second_report.pdf)<br>
 
 ## Running the script
 * First clone this repository:
