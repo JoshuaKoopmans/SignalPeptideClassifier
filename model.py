@@ -17,9 +17,38 @@ class ClassifierModel(nn.Module):
             nn.MaxPool1d(2),
 
             nn.Conv1d(30, 1, 34),
-            nn.Softmax(),
+            # nn.Softmax(),
             nn.Sigmoid()
         )
 
     def forward(self, x):
         return self.seq(x)
+
+
+"""
+# Second, more traditional, model
+
+class ClassifierModel2(nn.Module):
+    def __init__(self, input_dim):
+        super(ClassifierModel2, self).__init__()
+        self.seq = nn.Sequential(
+            nn.Conv1d(input_dim, 16, 3),
+            nn.BatchNorm1d(16),
+            nn.MaxPool1d(2),
+            nn.ReLU(),
+
+            nn.Conv1d(16, 32, 3),
+            nn.BatchNorm1d(32),
+            nn.MaxPool1d(2),
+            nn.ReLU(),
+
+            nn.Flatten(),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.seq(x)
+"""
