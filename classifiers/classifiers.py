@@ -1,8 +1,8 @@
 ##############################################
-# Authors: Joshua, Michelle, Thijs           #
+# Authors: Joshua, Michelle                  #
 # Description: Signal Peptide dataset parser #
 # Date: 13-02-2020                           #
-# Last Edited: 25-03-2020                    #
+# Last Edited: 10-06-2020                    #
 ##############################################
 from datetime import datetime
 import os
@@ -34,7 +34,6 @@ def main():
     """
     labels, labels_test, peptide_dict, peptide_dict_test = parse_datasets()
     encoders = ["one_hot", "nlf", "blosum", "radepathy"]
-    encoders = [encoders[2]]
     for encoder in encoders:
         X_train, X_test, y_train, y_test, dset_test, labels_test, input_dim = prepare_classification_data(labels,
                                                                                                           labels_test,
@@ -42,94 +41,14 @@ def main():
                                                                                                           peptide_dict_test,
                                                                                                           encoder)
         if benchmark:
-            with torch.no_grad():
-                print("Validating with benchmark set")
-                seqs = dset_test.view(len(dset_test), input_dim, 70)
-                labels = labels_test
-                model = torch.load("../resources/{0}_model.pth".format(encoder))
-                model.eval()
-                prediction = model(seqs)
-                predicted_list = []
-                for p in prediction:
-                    print(p.item())
-                    predicted_list.append(p.item())
-
-                fig = plt.figure(figsize=(8, 6))
-                fpr, tpr, _ = roc_curve(labels, predicted_list)
-                auc = roc_auc_score(labels, predicted_list)
-
-                plt.plot(fpr, tpr, label="AUC={:.3f}".format(auc))
-                plt.plot([0, 1], [0, 1], color='orange', linestyle='--')
-                plt.xticks(np.arange(0.0, 1.1, step=0.1))
-                plt.xlabel("False Positive Rate", fontsize=15)
-                plt.yticks(np.arange(0.0, 1.1, step=0.1))
-                plt.ylabel("True Positive Rate", fontsize=15)
-                plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
-                plt.legend(prop={'size': 13}, loc='lower right')
-                plt.savefig(encoder + "_bench_cnn_roc.png")
+            print("Validating with benchmark set")
+            predict_cnn(dset_test, labels_test, input_dim, encoder)
+            train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test)
 
         elif not benchmark:
-            print("Validating with splitted train set")
-            seqs = X_train.view(len(X_train), input_dim, 70)
-            labels = y_train
-            net = ClassifierModel(input_dim)
-            epochs = 25
-
-            losses = []
-            optimizer = torch.optim.Adam(net.parameters())
-            for epoch in range(epochs):
-                print("Epoch " + str(epoch))
-                epoch_loss = 0
-                correct = 0
-                shuffle = torch.randperm(len(seqs))
-                seqs = seqs[shuffle]
-                labels = labels[shuffle]
-                predicted_list = []
-                total_labels = []
-                for minibatchindex in range(0, len(seqs), 32):
-                    mb_data = seqs[minibatchindex:minibatchindex + 32]
-                    mb_labels = labels[minibatchindex:minibatchindex + 32]
-
-                    prediction = net(mb_data)
-                    predicted_list.append(prediction[0][0].flatten().detach().numpy())
-                    total_labels.append(mb_labels[0].detach().numpy())
-
-                    loss = F.binary_cross_entropy(prediction, mb_labels)
-
-                    loss.backward()
-                    optimizer.step()
-                    optimizer.zero_grad()
-
-                    correct += (prediction.argmax() == mb_labels).float().sum()
-                    accuracy = 100 * correct / len(mb_data)
-                    epoch_loss += float(loss.detach())
-
-                losses.append(epoch_loss)
-                print(' Epoch loss: %.20f, Accuracy %.20f' % (epoch_loss / 100, accuracy / 1000))
-
-            net.eval()
-
-            torch.save(net, "../resources/{0}_model.pth".format(encoder))
-
-            fpr, tpr, _ = roc_curve(total_labels, predicted_list)
-            auc = roc_auc_score(total_labels, predicted_list)
-
-            fig = plt.figure(figsize=(8, 6))
-            plt.plot(fpr, tpr, label="AUC={:.3f}".format(auc))
-            plt.plot([0, 1], [0, 1], color='orange', linestyle='--')
-            plt.xticks(np.arange(0.0, 1.1, step=0.1))
-            plt.xlabel("False Positive Rate", fontsize=15)
-            plt.yticks(np.arange(0.0, 1.1, step=0.1))
-            plt.ylabel("True Positive Rate", fontsize=15)
-            plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
-            plt.legend(prop={'size': 13}, loc='lower right')
-            plt.savefig(encoder + "_cnn_roc.png")
-
-            plt.figure(2)
-            plt.plot(range(epochs), losses)
-            plt.ylabel('Loss')
-            plt.xlabel('Epoch')
-            plt.savefig(encoder + "_cnn_loss.png")
+            print("Training with splitted train set")
+            train_cnn(X_train, y_train, input_dim, encoder)
+            train_multiple_classifiers(X_train, y_train, encoder, X_test, y_test)
 
 
 def prepare_classification_data(labels, labels_test, peptide_dict, peptide_dict_test, encoder):
@@ -267,6 +186,96 @@ def train_multiple_classifiers(X_train, y_train, encoder, dset_test, labels_test
     plot_multple_roc(encoder, result_table)
 
 
+def train_cnn(X_train, y_train, input_dim, encoder):
+    """
+    Train a model with train data.
+
+    :params X_train: Peptide sequences in train set
+    :params y_train: Labels of X_train
+    :params input_dim: Dimension (amount of features) of the encoder used
+    :params encoder: Encoder used
+    """
+    seqs = X_train.view(len(X_train), input_dim, 70)
+    labels = y_train
+    net = ClassifierModel(input_dim)
+    epochs = 25
+
+    losses = []
+    optimizer = torch.optim.Adam(net.parameters())
+    for epoch in range(epochs):
+        print("Epoch " + str(epoch))
+        epoch_loss = 0
+        correct = 0
+        shuffle = torch.randperm(len(seqs))
+        seqs = seqs[shuffle]
+        labels = labels[shuffle]
+        predicted_list = []
+        total_labels = []
+        for minibatchindex in range(0, len(seqs), 32):
+            mb_data = seqs[minibatchindex:minibatchindex + 32]
+            mb_labels = labels[minibatchindex:minibatchindex + 32]
+
+            prediction = net(mb_data)
+            predicted_list.append(prediction[0][0].flatten().detach().numpy())
+            total_labels.append(mb_labels[0].detach().numpy())
+
+            loss = F.binary_cross_entropy(prediction, mb_labels)
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            correct += (prediction.argmax() == mb_labels).float().sum()
+            accuracy = 100 * correct / len(mb_data)
+            epoch_loss += float(loss.detach())
+
+        losses.append(epoch_loss)
+        print(' Epoch loss: %.20f, Accuracy %.20f' % (epoch_loss / 100, accuracy / 1000))
+
+    net.eval()
+
+    torch.save(net, "../resources/{0}_model.pth".format(encoder))
+
+    fpr, tpr, _ = roc_curve(total_labels, predicted_list)
+    auc = roc_auc_score(total_labels, predicted_list)
+
+    fig = plt.figure(figsize=(8, 6))
+    plot_single_roc(encoder, fpr, tpr, auc)
+
+    plt.figure(2)
+    plt.plot(range(epochs), losses)
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.savefig(encoder + "_cnn_loss.png")
+
+
+def predict_cnn(dset_test, labels_test, input_dim, encoder):
+    """
+    Use a pre-trained model to predict class using new data.
+
+    :params dset_test: Peptide sequences in train set
+    :params labels_test: Labels of dset_test
+    :params input_dim: Dimension (amount of features) of the encoder used
+    :params encoder: Encoder used
+    """
+    with torch.no_grad():
+        seqs = dset_test.view(len(dset_test), input_dim, 70)
+        labels = labels_test
+        model = torch.load("../resources/{0}_model.pth".format(encoder))
+        model.eval()
+        prediction = model(seqs)
+        predicted_list = []
+        for p in prediction:
+            print(p.item())
+            predicted_list.append(p.item())
+
+        fig = plt.figure(figsize=(8, 6))
+        fpr, tpr, _ = roc_curve(labels, predicted_list)
+        auc = roc_auc_score(labels, predicted_list)
+
+        plot_single_roc(encoder, fpr, tpr, auc, "_benchmark")
+
+
 def plot_multple_roc(encoder, result_table):
     """
     The roc curve of the different classifiers are plotted in one graph
@@ -297,6 +306,27 @@ def plot_multple_roc(encoder, result_table):
         filename = os.path.join(results_dir, 'multiple_roc_curve_' + encoder + '_benchmark.png')
     fig.savefig(filename)
     print("Saved " + filename)
+
+
+def plot_single_roc(encoder, fpr, tpr, auc, extension=""):
+    """
+    Plot ROC curve for a specific encoder.
+
+    :params encoder: Encoder used
+    :params fpr: False Positive Rate
+    :params tpr: True Positive Rate
+    :params auc: AUC score
+    :params extension: Text extension to add to plot name.
+    """
+    plt.plot(fpr, tpr, label="AUC={:.3f}".format(auc))
+    plt.plot([0, 1], [0, 1], color='orange', linestyle='--')
+    plt.xticks(np.arange(0.0, 1.1, step=0.1))
+    plt.xlabel("False Positive Rate", fontsize=15)
+    plt.yticks(np.arange(0.0, 1.1, step=0.1))
+    plt.ylabel("True Positive Rate", fontsize=15)
+    plt.title('ROC Curve Analysis with ' + encoder, fontweight='bold', fontsize=15)
+    plt.legend(prop={'size': 13}, loc='lower right')
+    plt.savefig(encoder + extension + "_cnn_roc.png")
 
 
 def open_and_read_file(filename):
